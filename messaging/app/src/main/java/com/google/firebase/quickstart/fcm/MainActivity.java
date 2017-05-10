@@ -16,11 +16,19 @@
 
 package com.google.firebase.quickstart.fcm;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.firebase.iid.FirebaseInstanceId;
@@ -29,6 +37,7 @@ import com.google.firebase.messaging.FirebaseMessaging;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
+    private static final String TOPIC = "webcom_notif";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,20 +53,28 @@ public class MainActivity extends AppCompatActivity {
         //
         // Handle possible data accompanying notification message.
         // [START handle_data_extras]
-        if (getIntent().getExtras() != null) {
-            for (String key : getIntent().getExtras().keySet()) {
-                Object value = getIntent().getExtras().get(key);
-                Log.d(TAG, "Key: " + key + " Value: " + value);
-            }
-        }
+        Intent intent = getIntent();
+        logIntent(intent, "FIRST INTENT RECEIVED");
+        updateDataTextView(intent);
         // [END handle_data_extras]
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        //intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        //startActivity(intent);
+                        updateDataTextView(intent);
+                    }
+                }, new IntentFilter(MyFirebaseMessagingService.ACTION_DATA_BROADCAST)
+        );
 
         Button subscribeButton = (Button) findViewById(R.id.subscribeButton);
         subscribeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 // [START subscribe_topics]
-                FirebaseMessaging.getInstance().subscribeToTopic("news");
+                FirebaseMessaging.getInstance().subscribeToTopic(TOPIC);
                 // [END subscribe_topics]
 
                 // Log and toast
@@ -80,6 +97,118 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
             }
         });
+
+        Button resetDataButton = (Button) findViewById(R.id.resetDataTextView);
+        resetDataButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                TextView dataTextView = (TextView) findViewById(R.id.dataTextView);
+                dataTextView.setText(R.string.data_msg);
+            }
+        });
+
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d(TAG, "ON RESUME");
+        restoreDataTextView();
+        startService(new Intent(this, MyFirebaseMessagingService.class));
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Log.d(TAG, "ON PAUSE");
+        stopService(new Intent(this, MyFirebaseMessagingService.class));
+        saveDataTextView();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        Log.d(TAG, "ON NEW INTENT");
+        logIntent(intent, "NEW INTENT RECEIVED");
+        updateDataTextView(intent);
+    }
+
+    private void updateDataTextView(Intent intent) {
+        logDataTextView("BEFORE UPDATE");
+        restoreDataTextView();
+        if (intent != null && intent.getExtras() != null) {
+            Bundle extras = intent.getExtras();
+            String msg = "";
+            for (String key : extras.keySet()) {
+                Object value = extras.get(key);
+                if (key.equalsIgnoreCase("google.sent_time")
+                        || key.equalsIgnoreCase("from")
+                        || key.equalsIgnoreCase("google.message_id")
+                        || key.equalsIgnoreCase("collapse_key"))
+                {
+                    Log.d(TAG, String.format("Ignored key: %s Value: %s", key, value));
+                } else {
+                    if (msg.isEmpty()) {
+                        msg = String.format("Key: %s Value: %s", key, value);
+                    } else {
+                        msg = String.format("%s\nKey: %s Value: %s", msg, key, value);
+                    }
+                }
+            }
+            Log.d(TAG, String.format("Generated message:\n%s", msg));
+            TextView dataTextView = (TextView) findViewById(R.id.dataTextView);
+            String currentText = (String) dataTextView.getText();
+            if (currentText.contains("Notification message should be displayed here...")) {
+                dataTextView.setText(msg);
+            } else {
+                dataTextView.setText(String.format("%s\n%s", currentText, msg));
+            }
+        }
+        saveDataTextView();
+        logDataTextView("AFTER UPDATE");
+    }
+
+    private void saveDataTextView() {
+        logDataTextView("BEFORE SAVE");
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        final TextView dataTextView = (TextView) findViewById(R.id.dataTextView);
+        SharedPreferences.Editor edit = settings.edit();
+        edit.putString("dataTextView", (String) dataTextView.getText());
+        edit.apply();
+        logDataTextView("AFTER SAVE");
+    }
+
+    private void restoreDataTextView() {
+        logDataTextView("BEFORE RESTORE");
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        final TextView dataTextView = (TextView) findViewById(R.id.dataTextView);
+        CharSequence userText = settings.getString("dataTextView", null);
+        dataTextView.setText(userText);
+        logDataTextView("AFTER RESTORE");
+    }
+
+
+    private void logDataTextView(String title) {
+        final TextView dataTextView = (TextView) findViewById(R.id.dataTextView);
+        Log.d(TAG, String.format("%s:\n%s", title, (String) dataTextView.getText()));
+    }
+
+    private void logIntent(Intent intent, String title){
+        Log.d(TAG, String.format("%s: %s",title, intent));
+        if (intent.getExtras() != null) {
+            Bundle extras = intent.getExtras();
+            String msg = "";
+            for (String key : extras.keySet()) {
+                Object value = extras.get(key);
+                if (msg.isEmpty()) {
+                    msg = String.format("Key: %s Value: %s", key, value);
+                } else {
+                    msg = String.format("%s\nKey: %s Value: %s", msg, key, value);
+                }
+            }
+            Log.d(TAG, String.format("%s (extras):\n%s", title, msg));
+        }
+
     }
 
 }
