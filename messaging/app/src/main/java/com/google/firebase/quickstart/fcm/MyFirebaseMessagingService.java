@@ -30,6 +30,7 @@ import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
 import java.util.Map;
+import java.util.HashMap;
 
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
@@ -63,19 +64,13 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         // handle some notification when message contains no data nor notification items
         if(remoteMessage.getData().size() == 0 && remoteMessage.getNotification() == null) {
-            sendNotification("", "");
+            handleEmptyNotification();
         }
 
         // Check if message contains a data payload.
         if (remoteMessage.getData().size() > 0) {
             Log.d(TAG, "Message data payload: " + remoteMessage.getData());
-            sendData(remoteMessage.getData());
-            /*String dataMsg = "";
-            for (String key : remoteMessage.getData().keySet()) {
-                String value = (String) remoteMessage.getData().get(key);
-                dataMsg = String.format("%s\n%s: %s", dataMsg, key, value);
-            }
-           sendNotification(dataMsg);*/
+            handleDataNotification(remoteMessage.getData().get("json"));
         }
 
         // Check if message contains a notification payload.
@@ -92,9 +87,21 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     }
     // [END receive_message]
 
+    private void handleEmptyNotification() {
+        sendNotification("", "");
+    }
 
+    private void handleDataNotification(String jsonStr){
+        if (jsonStr != null && !jsonStr.isEmpty()) {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            Log.d(TAG, "Message data payload to send -> key json, value: " + jsonStr);
+            intent.putExtra("json", jsonStr);
+            startActivity(intent);
+        }
+    }
 
-    private void sendBroadcastMessage(RemoteMessage remoteMsg) {
+    /*private void sendBroadcastMessage(RemoteMessage remoteMsg) {
         if (remoteMsg != null) {
             Intent intent = new Intent(ACTION_DATA_BROADCAST);
             //intent.putExtra("google.sent_time", remoteMsg.getSentTime());
@@ -111,7 +118,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             //intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
-    }
+    }*/
 
     /**
      * Create and show a simple notification containing the received FCM message.
@@ -137,19 +144,5 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         notificationManager.notify(0 /* ID of notification */, notificationBuilder.build());
-    }
-
-    private void sendData(Map<String,String> data) {
-        if (data.size() > 0) {
-            Intent intent = new Intent(this, MainActivity.class);
-            //Intent intent = new Intent(ACTION_DATA_BROADCAST, null, this, MainActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            Log.d(TAG, "Message data payload to send: " + data);
-            for (Map.Entry<String, String> entry : data.entrySet()) {
-                intent.putExtra(entry.getKey(), entry.getValue());
-            }
-            startActivity(intent);
-            //LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-        }
     }
 }
